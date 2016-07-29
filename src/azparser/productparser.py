@@ -379,8 +379,8 @@ def main():
     global USE_CACHE
     global AUTO_OPEN_EDITOR
     parser = optparse.OptionParser('usage%prog [--cache] [--auto-open-editor]')
-    parser.add_option('--cache', dest='do_cache', type='string', help='cache html files')
-    parser.add_option('--auto-open-editor', dest='auto_edit', type='string', help='automatically open editor')
+    parser.add_option('-c', '--cache', dest='do_cache', action="store_true", help='cache html files')
+    parser.add_option('-a', '--auto-open-editor', action="store_true", dest='auto_edit',help='automatically open editor')
     (options, args) = parser.parse_args()
     do_cache= options.do_cache
     auto_edit = options.auto_edit
