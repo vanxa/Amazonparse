@@ -12,9 +12,10 @@ import traceback
 USE_CACHE = False
 AUTO_OPEN_EDITOR = False
 
+info_struct = {}
+
 def open_url(asin, use_cache=None):
     url = "https://www.amazon.com/gp/product/" + asin
-    
     print("Creating storage directory for product " + asin)
     if not os.path.isdir(asin):
         os.mkdir(asin)
@@ -26,8 +27,8 @@ def open_url(asin, use_cache=None):
             return bs(open(asin + "/" + asin+".html","r",encoding="UTF-8").read(), "html.parser")
     kwargs = {'retries' : 1}
     print("Opening URL " + url)
-    user_agent = {'user-agent' : 'Mozilla/5.0 (Windows NT 6.3; rv:36) ..'}
-    conn = urllib3.connection_from_url(url, timeout=10.0, maxsize=10, block=True, headers=user_agent)
+    headers = construct_headers()
+    conn = urllib3.connection_from_url(url, timeout=10.0, maxsize=10, block=True, headers=headers)
     html = conn.urlopen("GET",url)
     if html.status == 200:
         print("OK")
@@ -41,8 +42,20 @@ def open_url(asin, use_cache=None):
         print("Could not find URL")
         return None
     #return conn.urlopen("GET",url).data.decode("UTF-8")
-    
+  
+  
+def construct_headers():
+    headers = {}
+    headers['Accept'] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+    headers["Accept-Encoding"] = "gzip, deflate, sdch,br"
+    headers["Accept-Language"] = "en-US, en;q=0.8"
+    headers["DNT"] = "1"
+    headers["Upgrade-Insecure-Requests"] = "1"
+    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.116 Safari/537.36"
+    return headers
+  
 def process_asin(asin):
+    global info_struct
     print("Processing " + asin)
     try:
         html = open_url(asin)
@@ -69,23 +82,19 @@ def process_asin(asin):
                 return False
             
             if AUTO_OPEN_EDITOR:
-                flag = open_editor(os.path.join(os.getcwd(),asin,"info.txt"))
-                #if flag != 0:
-                #    print("There was an error while editing the file.")
-                #    return False
-                # This is just a temporary step, in order to test the above functionality
-                #input("Done. Press any key to continue")
+                open_editor(os.path.join(os.getcwd(),asin,"info.txt"))
             else:
                 input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % asin+"/info.txt")
             
             print("Parsing keyword data from file")
-            keywords = parse_keywords(asin+"/info.txt")
             print("Getting images")
+            keywords, keywords_nomixed = parse_keywords(asin+"/info.txt")
+            if keywords == None or keywords_nomixed == None:
+                raise Exception("No keywords provided")
             images = parse_url_for_images(html)
             if images == None:
                 print("Something went wrong for asin " + asin)
                 return False
-
            
             a = 0
             print("Got " + str(images.keys()) + " keys")
@@ -108,6 +117,10 @@ def process_asin(asin):
             img_count = a
             a = 0
             longtailkword = keywords["LongTailKeyword"]
+            if longtailkword == "":
+                raise Exception("No keyword supplied")
+            info_struct['keyword'] = longtailkword
+            write_to_file(asin, key_struct=keywords_nomixed, add_static_descr=True)
             while a < img_count:
                 name = longtailkword
                 if a > len(keywords["SuggestedKeyword"]):
@@ -116,9 +129,9 @@ def process_asin(asin):
                 else:
                     kword = keywords["SuggestedKeyword"][a]
                     if isinstance(kword, str):
-                        name += " " + kword
+                        name += " " + re.escape(kword)
                     elif isinstance(kword, tuple):
-                        name += " " + kword[0] + " "+ kword[1]
+                        name += " " + re.escape(kword[0]) + " "+ re.escape(kword[1])
                     else:
                         print("Was expecting either string or tuple, got %s " % str(type(kword)))    
                 im = Image.open(asin+"/"+str(a)+".jpg")
@@ -151,33 +164,50 @@ def process_asin(asin):
 def parse_keywords(loc):
     try:
         keywords = {}
+        keywords_nomixed = {}
         with open(loc, "r", encoding="UTF-8") as f:
             for line in f.readlines():
                 line = line.strip()
                 obj = re.search(r"longtailkeyword\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
-                    keyword = obj.group(1)
+                    keyword = translate_quotes(obj.group(1))
                     print("Found it. Keyword is %s" % keyword )
+                    if keyword == "":
+                        raise Exception("No LongtailKeyword provided")
                     keywords["LongTailKeyword"] = keyword
-                obj = re.search(r"SuggestedKeyword(\d*)\s*\=\s*(.*)", line)
+                    keywords_nomixed["LongTailKeyword"] = keyword
+                obj = re.search(r"suggestedkeyword(\d*)\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
                     index = obj.group(1)
-                    keyword = obj.group(2)
+                    keyword = translate_quotes(obj.group(2))
+                    if keyword == "":
+                        raise Exception("No SuggestedKeyword provided")
                     print("Found SuggestedKeyword%s = %s" %(index, keyword))
                     try:
                         keywords["SuggestedKeyword"] += [keyword]
                     except KeyError:
                         keywords["SuggestedKeyword"] = [keyword]
+                    keywords_nomixed["SuggestedKeyword"+str(index)] = keyword
             print("Done")
             if len(keywords.keys()) == 0:
                 print("No keywords were found in file. Did you forget to add keywords?")
-                return None
+                return None, None
             keywords["SuggestedKeyword"].extend(list(itertools.combinations(keywords["SuggestedKeyword"],2)))
             keywords["SuggestedKeyword"].extend(list(itertools.combinations(keywords["SuggestedKeyword"],3)))
-            return keywords
+            return keywords, keywords_nomixed
                 
     except Exception as e:
-        print("Could not open file " + loc + " - {0}".format(e))    
+        print("Exception " + loc + " - {0}".format(e))    
+        return None,None
+
+
+def translate_quotes(string_):
+    translation_tab = {
+        "\"" : "_", 
+        "\'" : "_",
+        "`"  : "_"
+    }
+    return string_.translate(translation_tab)
 
 def open_editor(doclocation):
     try:
@@ -190,6 +220,10 @@ def open_editor(doclocation):
         return False
     return True
 
+
+def create_static_description(keyword):
+    return "We only ship to the lower 48 states and do not combine shipping or offer local pickup. I do NOT ship to PO Boxes or APO'S. We offer a 30 days return policy on this " + keyword
+
 def run():
     print("Starting AZParser.")
     asin_list = parse_asin_file()
@@ -198,45 +232,90 @@ def run():
     input("Parser has finished")
     print("Goodbye!")
         
+############################################# PRODUCT DETAILS ##################################################
+
 
 def parse_url_for_info(html, asin = "."):
+    global info_struct
     try:
-        bullets = find_bullets(html)
-        descr = find_description(html)
-        product = find_product_name(html)
-        brand = find_brand(html)
-        details = find_details(html)
-        tech_details = find_tech_details(html)
-        with open(asin+"/info.txt", "w", encoding="UTF-8") as f:
-            f.write(product + " by " + brand + "\n")
-            f.write("Bullets:\n")
-            if len(bullets) == 0:
-                f.write("N/A\n")
-            else:
-                for bullet in bullets:
-                    f.write(bullet + "\n")
-            f.write("Description\n")
-            if descr == None:
-                f.write("N/A\n")
-            else:
-                f.write(descr + "\n")
-            f.write("Details\n")
-            if details == None or len(details.keys()) == 0:
-                f.write("N/A\n")
-            else:
-                for key in details.keys():
-                    f.write(key + " : " + details[key] + "\n")
-            f.write("Tech Details\n")
-            if tech_details == None or len(tech_details.keys()) == 0:
-                f.write("N/A\n")
-            else:    
-                for key in tech_details.keys():
-                    f.write(key + " : " + tech_details[key] + "\n")
+        info_struct['bullets'] = find_bullets(html)
+        info_struct['descr'] = find_description(html)
+        info_struct['product'] = find_product_name(html)
+        info_struct['brand'] = find_brand(html)
+        info_struct['details'] = find_details(html)
+        info_struct['tech_details'] = find_tech_details(html)
+        info_struct['price'] = find_price(html)
+        write_to_file(asin)                      
         return True
     except Exception as e:
         print("Got exception {0}".format(e))
         return False
         
+       
+def write_to_file(asin, key_struct = None, add_static_descr = False):
+    global info_struct
+    with open(asin+"/info.txt", "w", encoding="UTF-8") as f:
+        bullets = info_struct['bullets']
+        brand = info_struct['brand']
+        descr = info_struct['descr']
+        product = info_struct['product']
+        details = info_struct['details']
+        tech_details = info_struct['tech_details']
+        price = info_struct['price']
+        if key_struct == None:
+            f.write("LongTailKeyword=\nSuggestedKeyword1=\nSuggestedKeyword2=\nSuggestedKeyword3=\nSuggestedKeyword4=")
+        else:
+            for k in key_struct.keys():
+                if k == "LongTailKeyword":
+                    f.write("LongTailKeyword="+key_struct[k]+"\n")
+                else:
+                    f.write(k+"="+key_struct[k]+"\n")
+        new_line(f,2)
+        f.write("Title:\n"+product + " by " + brand + "\n")
+        new_line(f,2)
+        f.write("Bulletpoints:")
+        new_line(f,2)
+        if bullets == None or len(bullets) == 0:
+            f.write("N/A\n")
+        else:
+            for bullet in bullets:
+                f.write(bullet + "\n")
+        new_line(f,2)
+        f.write("Product Description:")
+        new_line(f,2)
+        if descr == None:
+            f.write("N/A\n")
+        else:
+            f.write(descr + "\n")
+        if add_static_descr:
+            f.write(create_static_description(key_struct["LongTailKeyword"]) + "\n")
+        new_line(f,2)
+        f.write("Details:")
+        new_line(f,2)
+        if details == None or len(details.keys()) == 0:
+            f.write("N/A\n")
+        else:
+            for key in details.keys():
+                f.write(key + " : " + details[key] + "\n")
+        new_line(f,2)
+        f.write("Technical Details:")
+        new_line(f,2)
+        if tech_details == None or len(tech_details.keys()) == 0:
+            f.write("N/A\n")
+        else:    
+            for key in tech_details.keys():
+                f.write(key + " : " + tech_details[key] + "\n")
+        new_line(f,2)
+        f.write("Price:")
+        new_line(f,2)
+        if price == None:
+            f.write("N/A")
+        else:
+            f.write(str(price))       
+       
+
+def new_line(f, numlines=1):
+    f.write("\n"*numlines)       
         
 def find_details(html):
     print("Finding product details")
@@ -284,25 +363,31 @@ def find_product_name(html):
     print("Finding product name")
     try:
         return html.find(id="productTitle").getText().strip()
-    except Exception:
-        print("Exception while trying to get product name")
+    except Exception as e:
+        print("Exception while trying to get product name - {0}".format(e))
         return None
             
 def find_brand(html):
     print("Finding brand")
     try:
         return html.find(id="brand").getText().strip()
-    except Exception:
-        print("Exception while trying to get product brand")
+    except Exception as e:
+        print("Exception while trying to get product brand - {0}".format(e))
         return None
             
 def find_bullets(html):
     print("Finding feature bullets")
+    bullets_id = "feature-bullets"
+    if html.find(id=bullets_id) == None:
+        bullets_id = bullets_id+"-btf"
+        if html.find(id=bullets_id)  == None:
+            print("No bullets were found")
+            return None
     try:
-        bullets = [bullet.getText().strip() for bullet in html.find(id="feature-bullets").find_all("li")]
+        bullets = [bullet.getText().strip() for bullet in html.find(id=bullets_id).find_all("li") if (bullet.attrs == {} or "replacementPartsFitmentBullet" not in bullet.attrs['id'])]
         return bullets
-    except Exception:
-        print("Exception while trying to parse feature bullets")
+    except Exception as e:
+        print("Exception while trying to parse feature bullets - {0}".format(e))
         return None
 
 def find_description(html):
@@ -319,12 +404,22 @@ def find_description(html):
                 product_html = bs(parse.unquote(obj.group(1)), "html.parser")
                 return product_html.find(class_="productDescriptionWrapper").getText().replace("\n", "").strip()
             except Exception as e:
-                print("Exception when trying to parse product description")
+                print("Exception when trying to parse product description - {0}".format(e))
                 return None
         else:
             return None
     
-    
+def find_price(html):
+    print("Finding item price")
+    try:
+        tr = html.find(id="price").find("table").find("tr") # First element
+        if "price" in tr.find("td").getText().lower():
+            price = float(tr.find_all("td")[1].getText().strip().replace("\n","").replace("$",""))
+            return round(price + price*0.17,2)
+            
+    except Exception as e:
+        print("Exception when trying to parse price - {0}".format(e))
+        return None   
 
     
 
