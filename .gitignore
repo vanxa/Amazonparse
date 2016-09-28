@@ -90,3 +90,12 @@ ENV/
 
 CACHE/
 
+asin.txt
+win32/
+*.txt
+*.zip
+*.tar*
+*.jpg
+*.jpeg
+*.html
+!template.html

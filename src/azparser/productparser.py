@@ -147,20 +147,65 @@ def process_asin(asin):
                     im.save(asin+"/"+name+".jpg")
                     os.remove(asin+"/"+str(a)+".jpg")
                 except Exception as e:
-                    print("Exception - {0}".format(e)) 
+                    print_exception("Exception")
                 a += 1
             return True
         else:
             print("Skipping processing")
             return True
     except Exception as e:
-        (trace_type, trace_val, stacktrace) = sys.exc_info()
-        print("Caught exception for asin "+ asin)
-        print("-"*50)
-        traceback.print_exception(trace_type,trace_val, stacktrace,limit=2, file=sys.stdout)
-        print("-"*50)
+        print_exception("Exception while processing asin "+ asin)
         return False
 
+def get_html_template():
+    try:
+        return bs(open("template.html","r",encoding="UTF-8").read(), "html.parser")
+    except Exception as e:
+        print_exception("Failed to open HTML template")
+        
+def modify_html_template(asin, longtail_key = None):
+    global info_struct
+    html = get_html_template()
+    if html == None:
+        print("Failed to retrieve template. Cannot proceed")
+        raise Exception("No template")
+    
+    if longtail_key == None:
+        print("No keyword received. Template will not be complete")
+        
+    bullets = info_struct['bullets']
+    product = info_struct['product']
+    descr = info_struct['descr']
+    if bullets == None or descr == None or product == None:
+        print("Some required data is missing from info.txt. Cannot proceed")
+        raise Exception("No information")
+    
+    try:
+        title_tag = html.find("span", id="title")
+        title_tag.string= product
+        
+        descr_tag = html.find("p",id="productDescription")
+        descr_tag.string = descr
+        
+        if longtail_key != None:
+            policy_key = html.find("span", id="longtailKeyword-shippingPolicy")
+            policy_key.string = longtail_key
+            policy_key = html.find("span", id="longtailKeyword-returnPolicy")
+            policy_key.string = longtail_key
+            
+            list_tag = html.find("ul", id="bulletpoints")
+            for bullet in bullets:
+                li = html.new_tag("li")
+                li.string = bullet
+                list_tag.append(li)
+                
+        with open(asin+"/page.html", "wb") as f:
+            f.write(html.prettify(encoding="UTF-8",))
+        
+        
+    except Exception as e:
+        print_exception("Failed to modify HTML template")
+        
 def parse_keywords(loc):
     try:
         keywords = {}
@@ -181,7 +226,8 @@ def parse_keywords(loc):
                     index = obj.group(1)
                     keyword = translate_quotes(obj.group(2))
                     if keyword == "":
-                        raise Exception("No SuggestedKeyword provided")
+                        #raise Exception("No SuggestedKeyword provided")
+                        continue
                     print("Found SuggestedKeyword%s = %s" %(index, keyword))
                     try:
                         keywords["SuggestedKeyword"] += [keyword]
@@ -197,7 +243,7 @@ def parse_keywords(loc):
             return keywords, keywords_nomixed
                 
     except Exception as e:
-        print("Exception " + loc + " - {0}".format(e))    
+        print_exception("Exception "+ loc)
         return None,None
 
 
@@ -216,7 +262,7 @@ def open_editor(doclocation):
         else:
             os.system("%s %s" % (os.getenv("EDITOR"), doclocation))
     except Exception as e:
-        print("Got exception {0}".format(e))
+        print_exception()
         return False
     return True
 
@@ -248,7 +294,7 @@ def parse_url_for_info(html, asin = "."):
         write_to_file(asin)                      
         return True
     except Exception as e:
-        print("Got exception {0}".format(e))
+        print_exception()
         return False
         
        
@@ -312,6 +358,10 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
             f.write("N/A")
         else:
             f.write(str(price))       
+            
+        if key_struct != None:
+        # Create template
+            modify_html_template(asin, key_struct["LongTailKeyword"])
        
 
 def new_line(f, numlines=1):
@@ -339,7 +389,7 @@ def find_details(html):
                 
             
     except Exception as e:
-        print("Got exception {0}".format(e))
+        print_exception()
     return res
         
 def find_tech_details(html):
@@ -355,7 +405,7 @@ def find_tech_details(html):
                 res[row.th.getText()] = row.td.getText()
         return res            
     except Exception as e:
-        print("Got exception {0}".format(e))
+        print_exception()
     return res
 
             
@@ -364,7 +414,7 @@ def find_product_name(html):
     try:
         return html.find(id="productTitle").getText().strip()
     except Exception as e:
-        print("Exception while trying to get product name - {0}".format(e))
+        print_exception("Exception while trying to get product name")
         return None
             
 def find_brand(html):
@@ -372,7 +422,7 @@ def find_brand(html):
     try:
         return html.find(id="brand").getText().strip()
     except Exception as e:
-        print("Exception while trying to get product brand - {0}".format(e))
+        print_exception("Exception while trying to get product brand ")
         return None
             
 def find_bullets(html):
@@ -387,7 +437,7 @@ def find_bullets(html):
         bullets = [bullet.getText().strip() for bullet in html.find(id=bullets_id).find_all("li") if (bullet.attrs == {} or "replacementPartsFitmentBullet" not in bullet.attrs['id'])]
         return bullets
     except Exception as e:
-        print("Exception while trying to parse feature bullets - {0}".format(e))
+        print_exception("Exception while trying to parse feature bullets ")
         return None
 
 def find_description(html):
@@ -404,7 +454,7 @@ def find_description(html):
                 product_html = bs(parse.unquote(obj.group(1)), "html.parser")
                 return product_html.find(class_="productDescriptionWrapper").getText().replace("\n", "").strip()
             except Exception as e:
-                print("Exception when trying to parse product description - {0}".format(e))
+                print_exception("Exception when trying to parse product description ")
                 return None
         else:
             return None
@@ -418,7 +468,7 @@ def find_price(html):
             return round(price + price*0.17,2)
             
     except Exception as e:
-        print("Exception when trying to parse price - {0}".format(e))
+        print_exception("Exception when trying to parse price ")
         return None   
 
     
@@ -463,6 +513,12 @@ def parse_url_for_images(html):
     print("Done")
     return images
     
+def print_exception(msg = "Exception"):
+    (trace_type, trace_val, stacktrace) = sys.exc_info()
+    print(msg)
+    print("-"*50)
+    traceback.print_exception(trace_type,trace_val, stacktrace,limit=2, file=sys.stdout)
+    print("-"*50)    
     
 def parse_asin_file():
     with open("asin.txt","r") as f:
@@ -491,5 +547,6 @@ def main():
     
 if __name__ == '__main__':
     main()
+    
 
         
