@@ -61,22 +61,22 @@ def process_asin(asin):
         html = open_url(asin)
         if html != None:
             print("Getting product information")
-            done = False
-            if os.path.isfile(asin+"/info.txt"):
-                while True:
-                    q = input("Info file already exists in %s. Re-process the information (y/N/q)? ").lower()
-                    if q == "y":
-                        done = parse_url_for_info(html, asin)
-                        break
-                    elif q == "" or q == None or q == "n":
-                        done = True
-                        break
-                    elif q == "q":
-                        print("Quitting")
-                        return False
-            
-            else:
-                done = parse_url_for_info(html,asin)
+#             done = False
+#             if os.path.isfile(asin+"/info.txt"):
+#                 while True:
+#                     q = input("Info file already exists in %s. Re-process the information (y/N/q)? ").lower()
+#                     if q == "y":
+#                         done = parse_url_for_info(html, asin)
+#                         break
+#                     elif q == "" or q == None or q == "n":
+#                         done = True
+#                         break
+#                     elif q == "q":
+#                         print("Quitting")
+#                         return False
+#             
+#             else:
+            done = parse_url_for_info(html,asin)
             if not done:
                 print("There was an exception raised. Exiting")
                 return False
@@ -199,7 +199,7 @@ def modify_html_template(asin, longtail_key = None):
                 li.string = bullet
                 list_tag.append(li)
                 
-        with open(asin+"/page.html", "wb") as f:
+        with open(asin+"/info.txt", "ab") as f:
             f.write(html.prettify(encoding="UTF-8",))
         
         
@@ -291,13 +291,28 @@ def parse_url_for_info(html, asin = "."):
         info_struct['details'] = find_details(html)
         info_struct['tech_details'] = find_tech_details(html)
         info_struct['price'] = find_price(html)
+        info_struct['UPC'] = find_upc_from_file(asin)
         write_to_file(asin)                      
         return True
     except Exception as e:
         print_exception()
         return False
         
-       
+def find_upc_from_file(asin):
+    try:
+        with open("UPC.txt","r") as f:
+            datalines = f.read().split("\n")
+            for line in datalines:
+                if line != "" and asin in line:
+                    try:
+                        return line.split(":")[1] # Assuming line format ASIN:UPC   
+                    except Exception as e:
+                        print_exception("Could not parse UPC file")
+                        return None
+    except Exception as e:
+        print_exception("No UPC file present, skipping")
+        return None
+    
 def write_to_file(asin, key_struct = None, add_static_descr = False):
     global info_struct
     with open(asin+"/info.txt", "w", encoding="UTF-8") as f:
@@ -308,6 +323,50 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
         details = info_struct['details']
         tech_details = info_struct['tech_details']
         price = info_struct['price']
+        f.write("Title:\n"+product + " by " + brand + "\n")
+        new_line(f,1)
+        f.write("Bulletpoints:")
+        new_line(f,1)
+        if bullets == None or len(bullets) == 0:
+            f.write("N/A\n")
+        else:
+            for bullet in bullets:
+                f.write(bullet + "\n")
+        new_line(f,2)
+        f.write("Product Description:")
+        new_line(f,1)
+        if descr == None:
+            f.write("N/A\n")
+        else:
+            f.write(descr + "\n")
+        if add_static_descr:
+            f.write(create_static_description(key_struct["LongTailKeyword"]) + "\n")
+        new_line(f,2)
+        f.write("Details:")
+        new_line(f,1)
+        if details == None or len(details.keys()) == 0:
+            f.write("N/A\n")
+        else:
+            for key in details.keys():
+                f.write(key + " : " + details[key] + "\n")
+        if info_struct['UPC'] != None:
+            f.write("UPC : " + info_struct['UPC'] + "\n")
+        new_line(f,2)
+        f.write("Technical Details:")
+        new_line(f,1)
+        if tech_details == None or len(tech_details.keys()) == 0:
+            f.write("N/A\n")
+        else:    
+            for key in tech_details.keys():
+                f.write(key + " : " + tech_details[key] + "\n")
+        new_line(f,2)
+        f.write("Price:")
+        new_line(f,1)
+        if price == None:
+            f.write("N/A")
+        else:
+            f.write(str(price))       
+        new_line(f,2)    
         if key_struct == None:
             f.write("LongTailKeyword=\nSuggestedKeyword1=\nSuggestedKeyword2=\nSuggestedKeyword3=\nSuggestedKeyword4=")
         else:
@@ -317,51 +376,10 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
                 else:
                     f.write(k+"="+key_struct[k]+"\n")
         new_line(f,2)
-        f.write("Title:\n"+product + " by " + brand + "\n")
-        new_line(f,2)
-        f.write("Bulletpoints:")
-        new_line(f,2)
-        if bullets == None or len(bullets) == 0:
-            f.write("N/A\n")
-        else:
-            for bullet in bullets:
-                f.write(bullet + "\n")
-        new_line(f,2)
-        f.write("Product Description:")
-        new_line(f,2)
-        if descr == None:
-            f.write("N/A\n")
-        else:
-            f.write(descr + "\n")
-        if add_static_descr:
-            f.write(create_static_description(key_struct["LongTailKeyword"]) + "\n")
-        new_line(f,2)
-        f.write("Details:")
-        new_line(f,2)
-        if details == None or len(details.keys()) == 0:
-            f.write("N/A\n")
-        else:
-            for key in details.keys():
-                f.write(key + " : " + details[key] + "\n")
-        new_line(f,2)
-        f.write("Technical Details:")
-        new_line(f,2)
-        if tech_details == None or len(tech_details.keys()) == 0:
-            f.write("N/A\n")
-        else:    
-            for key in tech_details.keys():
-                f.write(key + " : " + tech_details[key] + "\n")
-        new_line(f,2)
-        f.write("Price:")
-        new_line(f,2)
-        if price == None:
-            f.write("N/A")
-        else:
-            f.write(str(price))       
-            
-        if key_struct != None:
-        # Create template
-            modify_html_template(asin, key_struct["LongTailKeyword"])
+        
+    if key_struct != None:
+    # Create template
+        modify_html_template(asin, key_struct["LongTailKeyword"])
        
 
 def new_line(f, numlines=1):
@@ -462,9 +480,9 @@ def find_description(html):
 def find_price(html):
     print("Finding item price")
     try:
-        tr = html.find(id="price").find("table").find("tr") # First element
+        tr = html.find("div", id="price").find("table").find("tr") # First element
         if "price" in tr.find("td").getText().lower():
-            price = float(tr.find_all("td")[1].getText().strip().replace("\n","").replace("$",""))
+            price = float(tr.find_all("td")[1].span.getText().strip().replace("\n","").replace("$",""))
             return round(price + price*0.17,2)
             
     except Exception as e:
