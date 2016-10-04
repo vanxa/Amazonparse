@@ -305,7 +305,7 @@ def find_upc_from_file(asin):
             for line in datalines:
                 if line != "" and asin in line:
                     try:
-                        return line.split(":")[1] # Assuming line format ASIN:UPC   
+                        return line.split(":")[0].strip() # Assuming line format UPC : ASIN   
                     except Exception as e:
                         print_exception("Could not parse UPC file")
                         return None
