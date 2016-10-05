@@ -17,5 +17,5 @@ setup(
                             'excludes': ['pkg_resources','doctest', 'pdb','jsonschema', 'tornado', 'setuptools', 'distutils', 'matplotlib']
                     }
                },
-    console = [{'script': 'azparser/productparser.py'}],
+    console = [{'script': 'parsers/productparser.py'}],
 )

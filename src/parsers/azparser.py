@@ -323,9 +323,11 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
         details = info_struct['details']
         tech_details = info_struct['tech_details']
         price = info_struct['price']
-        f.write("Title:\n"+product + " by " + brand + "\n")
+        f.write("Title:\n")
         new_line(f,1)
-        f.write("Bulletpoints:")
+        f.write(product + " by " + brand)
+        new_line(f,2)
+        f.write("Bulletpoints:\n")
         new_line(f,1)
         if bullets == None or len(bullets) == 0:
             f.write("N/A\n")
@@ -333,7 +335,7 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
             for bullet in bullets:
                 f.write(bullet + "\n")
         new_line(f,2)
-        f.write("Product Description:")
+        f.write("Product Description:\n")
         new_line(f,1)
         if descr == None:
             f.write("N/A\n")
@@ -342,23 +344,24 @@ def write_to_file(asin, key_struct = None, add_static_descr = False):
         if add_static_descr:
             f.write(create_static_description(key_struct["LongTailKeyword"]) + "\n")
         new_line(f,2)
-        f.write("Details:")
+        f.write("Details:\n")
         new_line(f,1)
-        if details == None or len(details.keys()) == 0:
+        if details == None or len(details) == 0:
             f.write("N/A\n")
         else:
-            for key in details.keys():
-                f.write(key + " : " + details[key] + "\n")
-        if info_struct['UPC'] != None:
-            f.write("UPC : " + info_struct['UPC'] + "\n")
+            for detail in details:
+                f.write(detail + "\n")
         new_line(f,2)
-        f.write("Technical Details:")
+        f.write("Technical Details:\n")
         new_line(f,1)
-        if tech_details == None or len(tech_details.keys()) == 0:
+        if tech_details == None or len(tech_details) == 0:
             f.write("N/A\n")
         else:    
-            for key in tech_details.keys():
-                f.write(key + " : " + tech_details[key] + "\n")
+            for detail in tech_details:
+                f.write(detail + "\n")
+        new_line(f,2)
+        if info_struct['UPC'] != None:
+            f.write("UPC : " + info_struct['UPC'] + "\n")
         new_line(f,2)
         f.write("Price:")
         new_line(f,1)
@@ -387,7 +390,7 @@ def new_line(f, numlines=1):
         
 def find_details(html):
     print("Finding product details")
-    res = {} 
+    res = []
     try:
         detail_html = html.find(id="prodDetails")
         if detail_html == None:
@@ -396,23 +399,29 @@ def find_details(html):
                 print("No details found")
                 return None
             for li in detail_html.ul.find_all("li"):
-                res[li.b.extract().getText()] = li.getText()
+                if li.script or li.a or li.style:
+                    continue
+#                 txt = li.text.split(":") 
+                res.append(li.text.strip().replace("\n",""))
         else:
             for tr in detail_html.table.find_all("tr"):
                 th = tr.th.getText().strip()
                 if th.replace(" ","").lower() == "customerreviews":
-                    res[th] = tr.td.br.getText().strip()
+                    res.append(th + ":" + tr.td.br.getText().strip().replace("\n",""))
+#                     res[th] = tr.td.br.getText().strip()
                 else:
-                    res[th] = tr.td.getText().strip()
+                    res.append(th + ":"+ tr.td.getText().strip().replace("\n",""))
+#                     res[th] = tr.td.getText().strip()
                 
             
     except Exception as e:
         print_exception()
+    res.sort()
     return res
         
 def find_tech_details(html):
     print("Finding product technical details")
-    res = {} 
+    res = [] 
     try:
         detail_html = html.find(id="technicalSpecifications_feature_div")
         if detail_html == None:
@@ -420,10 +429,11 @@ def find_tech_details(html):
             return None
         for table in detail_html.find_all("table"):
             for row in table.find_all("tr"):
-                res[row.th.getText()] = row.td.getText()
-        return res            
+                res.append(row.th.getText() +":"+ row.td.getText().strip())
+        return res.sort()            
     except Exception as e:
         print_exception()
+    res.sort()
     return res
 
             
@@ -452,7 +462,7 @@ def find_bullets(html):
             print("No bullets were found")
             return None
     try:
-        bullets = [bullet.getText().strip() for bullet in html.find(id=bullets_id).find_all("li") if (bullet.attrs == {} or "replacementPartsFitmentBullet" not in bullet.attrs['id'])]
+        bullets = [bullet.getText().strip() for bullet in html.find(id=bullets_id).find_all("li") if (bullet.attrs == {} or not bullet.has_attr("id") or "replacementPartsFitmentBullet" not in bullet.attrs['id'])]
         return bullets
     except Exception as e:
         print_exception("Exception while trying to parse feature bullets ")
@@ -464,6 +474,12 @@ def find_description(html):
     product_html = None
     if len(prod__iframe) == 0:
         print("Product Description iFrame was not found!")
+        print("Looking for div id='productDescription'")
+        descr = html.find(id="productDescription")
+        if descr:
+            print("Found it")
+            p = descr.p
+            return p.getText().strip()
         return None
     else:
         obj = re.search(r"var iframeContent\s*=\s(.*?);",prod__iframe[0])
@@ -479,15 +495,36 @@ def find_description(html):
     
 def find_price(html):
     print("Finding item price")
-    try:
-        tr = html.find("div", id="price").find("table").find("tr") # First element
-        if "price" in tr.find("td").getText().lower():
-            price = float(tr.find_all("td")[1].span.getText().strip().replace("\n","").replace("$",""))
-            return round(price + price*0.17,2)
+    price_div = None
+    for tag in ["priceblock_outprice","priceblock_dealprice", "snsPrice"]:
+        price_div = html.find(id=tag)
+        if price_div:
+            try:
+                if tag == "snsPrice":
+                    span = [ span for span in price_div.find_all("span") if span.has_attr("class") and "a-color-price" in span["class"] and "snsPricePerUnit" not in span["class"]]
+                    price = float(span[0].getText().strip().replace("\n","").replace("$",""))
+                    return round(price + price*0.17,2)
+                else:             
+                    price = float(price_div.getText().strip().replace("\n","").replace("$",""))
+                    return round(price + price*0.17,2)
+            except Exception as e:
+                print_exception("Exception when trying to parse price ")
+                return None   
+    if not price_div:
+        print("Could not find price div")
+        return None
             
-    except Exception as e:
-        print_exception("Exception when trying to parse price ")
-        return None   
+#     try:
+#         span = price_div.find("span", id=tag_id)
+#         if span:
+#             price = float(tr.find_all("td")[1].span.getText().strip().replace("\n","").replace("$",""))
+#             return round(price + price*0.17,2)
+#         else:
+#             print("Cannot find price")
+#             return None
+#     except Exception as e:
+#         print_exception("Exception when trying to parse price ")
+#         return None   
 
     
 
