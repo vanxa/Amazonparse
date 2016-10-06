@@ -1,4 +1,4 @@
-all: clean init azparser walmartparser move-dist
+all: clean init azparser walmartparser move-dist 
 
 azparser:
 	pyinstaller -F -n azparser_win32 src\parsers\azparser.py
@@ -9,8 +9,8 @@ walmartparser:
 	echo "Done"
 
 move-dist:
-	mv dist\azparser_win32.exe azparser/
-	mv dist\walmartparser_win32.exe walmartparser/
+	mv dist\azparser_win32.exe azparser\azparser_win32.exe
+	mv dist\walmartparser_win32.exe walmartparser\walmartparser_win32.exe
 
 
 
@@ -31,4 +31,3 @@ init:
 	touch walmartparser\walmart.txt
 
 
-.PHONY: all clean-dist 
