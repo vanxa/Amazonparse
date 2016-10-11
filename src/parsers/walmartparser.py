@@ -5,9 +5,11 @@ import parsers.static as static
 
 USE_CACHE = False
 AUTO_OPEN_EDITOR = False
+USE_DYNAMIC_TITLE = False
 PRODUCT_LIST_FILENAME = "walmart.txt"
 UPC_FILENAME = "UPC_walmart.txt"
 WALMART_URL_ROOT = "https://www.walmart.com/ip/"
+
 
 info_struct = {}
 
@@ -16,39 +18,33 @@ def process_product(product):
     print("Processing " + product)
     try:
         html = static.open_url(WALMART_URL_ROOT, product, USE_CACHE)
+        
         if html != None:
             print("Getting product information")
-#             done = False
-#             if os.path.isfile(product+"/info.txt"):
-#                 while True:
-#                     q = input("Info file already exists in %s. Re-process the information (y/N/q)? ").lower()
-#                     if q == "y":
-#                         done = parse_url_for_info(html, product)
-#                         break
-#                     elif q == "" or q == None or q == "n":
-#                         done = True
-#                         break
-#                     elif q == "q":
-#                         print("Quitting")
-#                         return False
-#             
-#             else:
             done = parse_url_for_info(html,product)
             if not done:
                 print("There was an exception raised. Exiting")
                 return False
             
             if AUTO_OPEN_EDITOR:
-                static.open_editor(os.path.join(os.getcwd(),product,"info.txt"))
+                static.open_editor(os.path.join(os.getcwd(),product,static.TEMP_TXT))
             else:
-                input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % product+"/info.txt")
+                input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % product+"/"+ static.TEMP_TXT)
             
             print("Getting images from HTML")
             images = parse_url_for_images(html)
             if images == None:
                 print("Something went wrong for product " + product)
                 return False
-            static.get_images(product, images, info_struct)
+            
+            print("Parsing keyword data from file")
+            keywords,keywords_nomixed = static.parse_keywords(product+"/"+ static.TEMP_TXT)
+            if keywords == None or keywords_nomixed == None:
+                raise Exception("No keywords provided")
+
+            info_struct = static.update_and_copy_info(product, keywords = keywords_nomixed, dyn_title = USE_DYNAMIC_TITLE)        
+            static.get_images(product, images, keywords)           
+            static.modify_html_template(product, info_struct, keywords_nomixed["LongTailKeyword"])
             return True
         else:
             print("Skipping processing")
@@ -80,7 +76,7 @@ def parse_url_for_info(html, product = "."):
 #         info_struct['tech_details'] = find_tech_details(html)
         info_struct['price'] = find_price(html)
         info_struct['UPC'] = static.find_upc_from_file(product, UPC_FILENAME)
-        static.write_to_file(product, info_struct,0)                      
+        static.write_to_file(product+"/"+static.TEMP_TXT, info_struct)                      
         return True
     except Exception as e:
         static.print_exception()
@@ -210,19 +206,25 @@ def parse_url_for_images(html):
 def main():
     global USE_CACHE
     global AUTO_OPEN_EDITOR
+    global USE_DYNAMIC_TITLE
     parser = optparse.OptionParser('usage%prog [--cache] [--auto-open-editor]')
     parser.add_option('-c', '--cache', dest='do_cache', action="store_true", help='cache html files')
+    parser.add_option('-d', '--dyn-title', dest='dyn_title', action="store_true", help='generate title dynamically using user keywords')
     parser.add_option('-a', '--auto-open-editor', action="store_true", dest='auto_edit',help='automatically open editor')
     (options, args) = parser.parse_args()
     do_cache= options.do_cache
     auto_edit = options.auto_edit
+    dyn_title = options.dyn_title
     if do_cache:
         USE_CACHE = True
         print("CACHE flag is set")
     if auto_edit:
         AUTO_OPEN_EDITOR = True
         print("AUTO_OPEN flag is set")
-    print("Starting with CACHE %s and AUTO_EDIT %s" % ( USE_CACHE, AUTO_OPEN_EDITOR))
+    if dyn_title:
+        USE_DYNAMIC_TITLE = True
+        print("USE_DYNAMIC_TITLE flag is set")
+    print("Starting with CACHE %s and AUTO_OPEN %s and USE_DYNAMIC_TITLE %s" % ( USE_CACHE, AUTO_OPEN_EDITOR, USE_DYNAMIC_TITLE))
     #test_threading()
     run()
     

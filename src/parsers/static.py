@@ -6,8 +6,21 @@ from bs4 import BeautifulSoup as bs
 import re 
 import itertools
 import fileinput
-from urllib import request, parse
+from urllib import request
 from PIL import Image
+
+
+STEP_TITLE = 0
+STEP_BRAND = 1
+STEP_BULLETS = 2
+STEP_DESCR = 3
+STEP_DETAILS = 4
+STEP_TECH = 5
+STEP_PRICE = 6
+STEP_UPC = 7
+
+INFO_TXT = "info.txt"
+TEMP_TXT = "tmp.txt"
 
 def print_exception(msg = "Exception"):
     (trace_type, trace_val, stacktrace) = sys.exc_info()
@@ -17,13 +30,14 @@ def print_exception(msg = "Exception"):
     print("-"*50)  
     
     
-def open_url(url_root, product_id, root_folder = None, use_cache=None):
+def open_url(url_root, product_id, use_cache=None):
     url = url_root + product_id
     print("Creating storage directory for product " + product_id)
     if not os.path.isdir(product_id):
         os.mkdir(product_id)
     else:
-        print("Directory already exists in " + os.getcwd())    
+        print("Directory already exists in " + os.getcwd())  
+        refresh_directory(product_id)  
     if use_cache:
         if os.path.isfile(product_id + "/" + product_id + ".html"):
             print("Caching is on and found local copy of " + url)
@@ -45,6 +59,16 @@ def open_url(url_root, product_id, root_folder = None, use_cache=None):
         print("Could not find URL")
         return None
     #return conn.urlopen("GET",url).data.decode("UTF-8")
+  
+  
+def refresh_directory(product_id):
+    print("Refreshing directory by removing old files")
+    for root, dirs, files in os.walk(product_id):
+        for current_file in files:
+            exts = ('.png', '.jpg', ".txt")
+            if any(current_file.lower().endswith(ext) for ext in exts):
+                print("Removing %s" % os.path.join(root,current_file))
+                os.remove(os.path.join(root, current_file))
     
 def construct_headers():
     headers = {}
@@ -106,12 +130,14 @@ def modify_html_template(product_id, info_struct, longtail_key = None):
         print_exception("Failed to modify HTML template")
         
 def parse_keywords(loc):
-    num_keywords = 0
     try:
         keywords = {}
         keywords_nomixed = {}
+        found_all = False
         with open(loc, "r", encoding="UTF-8") as f:
-            for line in f.readlines():
+            lines = f.readlines()
+            lines.reverse()
+            for line in lines:
                 line = line.strip()
                 obj = re.search(r"longtailkeyword\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
@@ -121,9 +147,11 @@ def parse_keywords(loc):
                         raise Exception("No LongtailKeyword provided")
                     keywords["LongTailKeyword"] = keyword
                     keywords_nomixed["LongTailKeyword"] = keyword
+                    found_all = True
+                if found_all:
+                    break
                 obj = re.search(r"suggestedkeyword(\d*)\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
-                    num_keywords += 1
                     index = obj.group(1)
                     keyword = translate_quotes(obj.group(2))
                     if keyword == "":
@@ -141,13 +169,125 @@ def parse_keywords(loc):
                 return None, None, 0
             keywords["SuggestedKeyword"].extend(list(itertools.combinations(keywords["SuggestedKeyword"],2)))
             keywords["SuggestedKeyword"].extend(list(itertools.combinations(keywords["SuggestedKeyword"],3)))
-            return keywords, keywords_nomixed, num_keywords
+            return keywords, keywords_nomixed
                 
     except Exception as e:
         print_exception("Exception "+ loc)
         return None,None, 0
 
+def update_and_copy_info(product_id, keywords = None, dyn_title = False):
+    step = -1
+    title = ""
+    brand = ""
+    bullets = []
+    descr = ""
+    details = []
+    tech = []
+    price = 0.0
+    upc = ""   
+    tmp_path = product_id+"/"+TEMP_TXT
+    info_path = product_id+"/"+INFO_TXT
+    try:
+        tmp_f = open(tmp_path, "r", encoding="UTF-8")
+        lines = tmp_f.readlines()
+        lines[0] = lines[0].replace("\ufeff","") # Remove BOM
+        with open(info_path, "w", encoding="UTF-8") as info_f:
+            for line in lines:
+                line2 = line.replace("\n","")
+#                 if line2 != "":
+#                     continue
+                for case in switch(line2.replace(" ","").replace(":","").lower()):                  
+                    if case(""):
+                        pass
+                    elif case("title"):
+                        step = STEP_TITLE
+                    elif case("brand"):
+                        step = STEP_BRAND
+                    elif case("bulletpoints"):
+                        step = STEP_BULLETS
+                    elif case("productdescription"):
+                        step = STEP_DESCR
+                    elif case("details"):
+                        step = STEP_DETAILS
+                    elif case("technicaldetails"):
+                        step = STEP_TECH
+                    elif case("upc"):
+                        step = STEP_UPC
+                    elif case("price"):
+                        step = STEP_PRICE
+                       
+                    elif case():        
+                        for inner_case in switch(step):
+                            if inner_case(STEP_TITLE):
+                                if dyn_title and keywords != None:
+                                    title = create_dynamic_title(keywords)
+                                    line = title
+                                else:
+                                    title = line2
+                                step = -1
+                            elif inner_case(STEP_BRAND):
+                                brand = line2
+                                step = -1
+                            elif inner_case(STEP_DESCR):
+                                descr = line2
+                                if keywords != None and "LongTailKeyword" in keywords.keys():
+                                    line += create_static_description(keywords["LongTailKeyword"]) + "\n"
+                            elif inner_case(STEP_BULLETS):
+                                bullets.append(line2)
+                            elif inner_case(STEP_DETAILS):
+                                details.append(line2)
+                            elif inner_case(STEP_TECH):
+                                tech.append(line2)
+                            elif inner_case(STEP_UPC):
+                                upc = line2
+                                step = -1
+                            elif inner_case(STEP_PRICE):
+                                price = float(line2)
+                                step = -1
+                        
+                info_f.write(line)        
+        if len(bullets) == 0:
+            raise Exception("No bullets section was found. Could not locate 'Bulletpoints:' header")        
+        if descr == "":
+            raise Exception("No description section was found. Could not locate 'Product Description:' header")
+        if title == "":
+            raise Exception("No title section was found. Could not locate 'Title:' header")
+        if brand == "":
+            raise Exception("No brand section was found. Could not locate 'Brand:' header")
+        tmp_f.close()
+        info_f.close()
+        
+        # Remove temporary dir
+        os.remove(tmp_path)
+        
+        return {'bullets': bullets,
+                'descr' : descr,
+                'product' : title,
+                'brand' : brand,
+                'details' : details,
+                'tech_details' : tech,
+                'price' : price,
+                'UPC' : upc}    
+                
+                    
+                    
+    except Exception as e:
+        print_exception()
+        return None
 
+def create_dynamic_title(keywords):
+    try:
+        title = keywords["LongTailKeyword"] + " "
+        i = 0
+        while i<len(keywords.keys()) - 1:
+            title = title + keywords["SuggestedKeyword"+str(i+1)] + " "
+            i += 1
+        return title.strip()
+    except Exception as e:
+        print_exception("Could not create dynamic title! Most probably LongTailKeyword is missing")
+        return "NO TITLE"
+    
+    
 def translate_quotes(string_):
     translation_tab = {
         "\"" : "_", 
@@ -166,7 +306,7 @@ def open_editor(doclocation):
         print_exception()
         return False
     return True
-
+    
 def create_static_description(keyword):
     return "We only ship to the lower 48 states and do not combine shipping or offer local pickup. I do NOT ship to PO Boxes or APO'S. We offer a 30 days return policy on this " + keyword
 
@@ -176,8 +316,8 @@ def get_struct(info_struct, key):
     else:
         return None    
 
-def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_static_descr = False):
-    with open(product_id+"/info.txt", "w", encoding="UTF-8") as f:
+def write_to_file(txt_location, info_struct):
+    with open(txt_location, "w", encoding="UTF-8") as f:
         bullets = get_struct(info_struct, "bullets")
         brand = get_struct(info_struct, 'brand')
         descr = get_struct(info_struct,'descr')
@@ -187,7 +327,12 @@ def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_
         price = get_struct(info_struct,'price')
         f.write("Title:\n")
         new_line(f,1)
-        f.write(product + " by " + brand)
+#         f.write(product + " by " + brand)
+        f.write(product)
+        new_line(f,2)
+        f.write("Brand:\n")
+        new_line(f,1)
+        f.write(brand)
         new_line(f,2)
         f.write("Bulletpoints:\n")
         new_line(f,1)
@@ -203,8 +348,6 @@ def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_
             f.write("N/A\n")
         else:
             f.write(descr + "\n")
-        if add_static_descr:
-            f.write(create_static_description(key_struct["LongTailKeyword"]) + "\n")
         new_line(f,2)
         f.write("Details:\n")
         new_line(f,1)
@@ -213,6 +356,7 @@ def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_
         else:
             for detail in details:
                 f.write(detail + "\n")
+            f.write("Brand Name: "+ brand + "\n")
         new_line(f,2)
         f.write("Technical Details:\n")
         new_line(f,1)
@@ -222,7 +366,7 @@ def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_
             for detail in tech_details:
                 f.write(detail + "\n")
         new_line(f,2)
-        if info_struct['UPC'] != None:
+        if info_struct['UPC'] != None or info_struct['UPC'] == "":
             f.write("UPC:\n" + info_struct['UPC'] + "\n")
         new_line(f,2)
         f.write("Price:")
@@ -232,20 +376,8 @@ def write_to_file(product_id, info_struct, num_keywords, key_struct = None, add_
         else:
             f.write(str(price))       
         new_line(f,2)    
-        if key_struct == None:
-            f.write("LongTailKeyword=\nSuggestedKeyword1=\nSuggestedKeyword2=\nSuggestedKeyword3=\nSuggestedKeyword4=")
-        else:
-            f.write("LongTailKeyword="+key_struct["LongTailKeyword"]+"\n")
-            i = 0
-            while i < num_keywords:
-                kword = "SuggestedKeyword"+str(i+1)
-                f.write(kword+"="+key_struct[kword]+"\n")
-                i += 1        
+        f.write("LongTailKeyword=\nSuggestedKeyword1=\nSuggestedKeyword2=\nSuggestedKeyword3=\nSuggestedKeyword4=")
         new_line(f,2)
-        
-    if key_struct != None:
-    # Create template
-        modify_html_template(product_id, info_struct, key_struct["LongTailKeyword"])
        
 
 def new_line(f, numlines=1):
@@ -276,13 +408,7 @@ def parse_product_file(filename):
     return product_list
         
 
-def get_images(product_id, images, info_struct):
-    
-    print("Parsing keyword data from file")
-    keywords, keywords_nomixed, num_keywords = parse_keywords(product_id+"/info.txt")
-    if keywords == None or keywords_nomixed == None:
-        raise Exception("No keywords provided")
-    
+def get_images(product_id, images, keywords): 
     a = 0
     print("Got " + str(images.keys()) + " keys")
     keys = images.keys()
@@ -306,8 +432,6 @@ def get_images(product_id, images, info_struct):
     longtailkword = keywords["LongTailKeyword"]
     if longtailkword == "":
         raise Exception("No keyword supplied")
-    info_struct['keyword'] = longtailkword
-    write_to_file(product_id, info_struct, num_keywords, key_struct=keywords_nomixed, add_static_descr=True)
     while a < img_count:
         name = longtailkword
         if a >= len(keywords["SuggestedKeyword"]):
@@ -336,3 +460,26 @@ def get_images(product_id, images, info_struct):
         except Exception as e:
             print_exception("Exception")
         a += 1
+        
+# This class provides the functionality we want. You only need to look at
+# this if you want to know how this works. It only needs to be defined
+# once, no need to muck around with its internals.
+class switch(object):
+    def __init__(self, value):
+        self.value = value
+        self.fall = False
+
+    def __iter__(self):
+        """Return the match method once, then stop"""
+        yield self.match
+        raise StopIteration
+    
+    def match(self, *args):
+        """Indicate whether or not to enter a case suite"""
+        if self.fall or not args:
+            return True
+        elif self.value in args: # changed for v1.5, see below
+            self.fall = True
+            return True
+        else:
+            return False

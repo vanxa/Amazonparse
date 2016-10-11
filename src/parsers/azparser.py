@@ -9,6 +9,7 @@ import parsers.static as static
 
 USE_CACHE = False
 AUTO_OPEN_EDITOR = False
+USE_DYNAMIC_TITLE = False
 ASIN_LIST_FILENAME = "asin.txt"
 UPC_FILENAME = "UPC.txt"
 AMAZON_URL_ROOT = "https://www.amazon.com/gp/product/"
@@ -28,9 +29,9 @@ def process_asin(asin):
                 return False
             
             if AUTO_OPEN_EDITOR:
-                static.open_editor(os.path.join(os.getcwd(),asin,"info.txt"))
+                static.open_editor(os.path.join(os.getcwd(),asin,static.TEMP_TXT))
             else:
-                input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % asin+"/info.txt")
+                input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % asin+"/"+ static.TEMP_TXT)
             
             print("Getting images from HTML")
             images = parse_url_for_images(html)
@@ -38,8 +39,14 @@ def process_asin(asin):
                 print("Something went wrong for asin " + asin)
                 return False
             
-            static.get_images(asin, images, info_struct)           
-            
+            print("Parsing keyword data from file")
+            keywords,keywords_nomixed = static.parse_keywords(asin+"/"+ static.TEMP_TXT)
+            if keywords == None or keywords_nomixed == None:
+                raise Exception("No keywords provided")
+
+            info_struct = static.update_and_copy_info(asin, keywords = keywords_nomixed, dyn_title = USE_DYNAMIC_TITLE)        
+            static.get_images(asin, images, keywords)           
+            static.modify_html_template(asin, info_struct, keywords_nomixed["LongTailKeyword"])
             return True
         else:
             print("Skipping processing")
@@ -70,7 +77,7 @@ def parse_url_for_info(html, asin = "."):
         info_struct['tech_details'] = find_tech_details(html)
         info_struct['price'] = find_price(html)
         info_struct['UPC'] = static.find_upc_from_file(asin, UPC_FILENAME)
-        static.write_to_file(asin, info_struct, 0)                      
+        static.write_to_file(asin+"/"+static.TEMP_TXT, info_struct)                      
         return True
     except Exception as e:
         static.print_exception()
@@ -266,23 +273,28 @@ def parse_url_for_images(html):
     print("Done")
     return images
         
-
 def main():
     global USE_CACHE
     global AUTO_OPEN_EDITOR
+    global USE_DYNAMIC_TITLE
     parser = optparse.OptionParser('usage%prog [--cache] [--auto-open-editor]')
     parser.add_option('-c', '--cache', dest='do_cache', action="store_true", help='cache html files')
+    parser.add_option('-d', '--dyn-title', dest='dyn_title', action="store_true", help='generate title dynamically using user keywords')
     parser.add_option('-a', '--auto-open-editor', action="store_true", dest='auto_edit',help='automatically open editor')
     (options, args) = parser.parse_args()
     do_cache= options.do_cache
     auto_edit = options.auto_edit
+    dyn_title = options.dyn_title
     if do_cache:
         USE_CACHE = True
         print("CACHE flag is set")
     if auto_edit:
         AUTO_OPEN_EDITOR = True
         print("AUTO_OPEN flag is set")
-    print("Starting with CACHE %s and AUTO_EDIT %s" % ( USE_CACHE, AUTO_OPEN_EDITOR))
+    if dyn_title:
+        USE_DYNAMIC_TITLE = True
+        print("USE_DYNAMIC_TITLE flag is set")
+    print("Starting with CACHE %s and AUTO_OPEN %s and USE_DYNAMIC_TITLE %s" % ( USE_CACHE, AUTO_OPEN_EDITOR, USE_DYNAMIC_TITLE))
     #test_threading()
     run()
     
