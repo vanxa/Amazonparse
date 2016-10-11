@@ -99,3 +99,6 @@ win32/
 *.jpeg
 *.html
 !template.html
+
+azparser/*
+walmartparser/*
