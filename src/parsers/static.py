@@ -242,7 +242,11 @@ def update_and_copy_info(product_id, keywords = None, dyn_title = False):
                                 upc = line2
                                 step = -1
                             elif inner_case(STEP_PRICE):
-                                price = float(line2)
+                                try:
+                                    price = float(line2)
+                                except Exception:
+                                    print("Illegal price value! Setting to N/A")
+                                    price="N/A"
                                 step = -1
                         
                 info_f.write(line)        

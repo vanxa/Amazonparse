@@ -126,8 +126,7 @@ def find_tech_details(html):
             return None
         for table in detail_html.find_all("table"):
             for row in table.find_all("tr"):
-                res.append(row.th.getText() +":"+ row.td.getText().strip())
-        return res.sort()            
+                res.append(row.th.getText().strip() +" : "+ row.td.getText().strip())            
     except Exception as e:
         static.print_exception()
     res.sort()
