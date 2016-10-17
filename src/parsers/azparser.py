@@ -12,7 +12,9 @@ AUTO_OPEN_EDITOR = False
 USE_DYNAMIC_TITLE = False
 ASIN_LIST_FILENAME = "asin.txt"
 UPC_FILENAME = "UPC.txt"
-AMAZON_URL_ROOT = "https://www.amazon.com/gp/product/"
+AMAZON_URL_ROOT = "https://www.amazon.com/gp"
+AMAZON_PRODUCT_URL = AMAZON_URL_ROOT+"/product/"
+AMAZON_PRODUCT_LIST_URL = AMAZON_URL_ROOT+"/offer-listing/"
 
 info_struct = {}
 
@@ -20,7 +22,7 @@ def process_asin(asin):
     global info_struct
     print("Processing Amazon product " + asin)
     try:
-        html = static.open_url(AMAZON_URL_ROOT, asin, USE_CACHE)
+        html = static.open_url(AMAZON_PRODUCT_URL, asin, USE_CACHE)
         if html != None:
             print("Getting product information")
             done = parse_url_for_info(html,asin)
@@ -75,7 +77,7 @@ def parse_url_for_info(html, asin = "."):
         info_struct['brand'] = find_brand(html)
         info_struct['details'] = find_details(html)
         info_struct['tech_details'] = find_tech_details(html)
-        info_struct['price'] = find_price(html)
+        info_struct['price'] = find_price(html, asin)
         info_struct['UPC'] = static.find_upc_from_file(asin, UPC_FILENAME)
         static.write_to_file(asin+"/"+static.TEMP_TXT, info_struct)                      
         return True
@@ -197,7 +199,7 @@ def find_description(html):
         else:
             return None
     
-def find_price(html):
+def find_price(html, asin):
     print("Finding item price")
     price_div = None
     for tag in ["priceblock_ourprice","priceblock_dealprice", "snsPrice"]:
@@ -216,7 +218,13 @@ def find_price(html):
                 return None   
     if not price_div:
         print("Could not find price div")
-        return None
+        # try to search for the price offering list and get first the PRIME new offer's price 
+        try:
+            price = lookup_price_listing(asin)
+            return round(price + price*0.17,2)
+        except Exception as e:
+            static.print_exception("Exception when parsing price listing for product %s"% asin)
+            return None
             
 #     try:
 #         span = price_div.find("span", id=tag_id)
@@ -226,11 +234,25 @@ def find_price(html):
 #         else:
 #             print("Cannot find price")
 #             return None
-#     except Exception as e:
-#         static.print_exception("Exception when trying to parse price ")
+#     except Exception as 
+#         static.p    oforolprint_exception("Exception when trying to parse price ")
 #         return None   
 
-    
+
+def lookup_price_listing(asin):
+    print("Will look up price listing for this product")
+    price_listing_html = static.open_url(AMAZON_PRODUCT_LIST_URL, asin, USE_CACHE)
+    main_div = price_listing_html.find("div", id="olpOfferList")
+    if main_div:
+        prime_offers = [o for o in main_div.find_all("div", class_= "olpOffer") if o.find("span", class_= "supersaver") and o.find(class_="olpConditionColumn") and o.find(class_="olpConditionColumn").getText().strip().lower() == "new"]    
+        if prime_offers:
+            obj = re.search(r"\d+\.*\d*", prime_offers.replace("\n", ""))
+            if obj:
+                return float(obj.group().strip())
+            else:
+                raise Exception("could not parse price")
+    else:
+        raise Exception("div#olpOfferList missing")
 
 def parse_url_for_images(html):
     #data = None
