@@ -29,23 +29,23 @@ def process_asin(asin):
             if not done:
                 print("There was an exception raised. Exiting")
                 return False
-            
+             
             if AUTO_OPEN_EDITOR:
                 static.open_editor(os.path.join(os.getcwd(),asin,static.TEMP_TXT))
             else:
                 input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % asin+"/"+ static.TEMP_TXT)
-            
+             
             print("Getting images from HTML")
             images = parse_url_for_images(html)
             if images == None:
                 print("Something went wrong for asin " + asin)
                 return False
-            
+             
             print("Parsing keyword data from file")
             keywords,keywords_nomixed = static.parse_keywords(asin+"/"+ static.TEMP_TXT)
             if keywords == None or keywords_nomixed == None:
                 raise Exception("No keywords provided")
-
+ 
             info_struct = static.update_and_copy_info(asin, keywords = keywords_nomixed, dyn_title = USE_DYNAMIC_TITLE)        
             static.get_images(asin, images, keywords)           
             static.modify_html_template(asin, info_struct, keywords_nomixed["LongTailKeyword"])
@@ -56,7 +56,7 @@ def process_asin(asin):
     except Exception as e:
         static.print_exception("Exception while processing asin "+ asin)
         return False
-
+ 
 def run():
     print("Starting AZParser.")
     asin_list = static.parse_product_file(ASIN_LIST_FILENAME)
@@ -64,10 +64,10 @@ def run():
         process_asin(asin)
     input("Parser has finished")
     print("Goodbye!")
-        
+         
 ############################################# PRODUCT DETAILS ##################################################
-
-
+ 
+ 
 def parse_url_for_info(html, asin = "."):
     global info_struct
     try:
@@ -84,9 +84,9 @@ def parse_url_for_info(html, asin = "."):
     except Exception as e:
         static.print_exception()
         return False
-        
-     
-        
+         
+      
+         
 def find_details(html):
     print("Finding product details")
     res = []
@@ -111,13 +111,13 @@ def find_details(html):
                 else:
                     res.append(th + ":"+ tr.td.getText().strip().replace("\n",""))
 #                     res[th] = tr.td.getText().strip()
-                
-            
+                 
+             
     except Exception as e:
         static.print_exception()
     res.sort()
     return res
-        
+         
 def find_tech_details(html):
     print("Finding product technical details")
     res = [] 
@@ -133,8 +133,8 @@ def find_tech_details(html):
         static.print_exception()
     res.sort()
     return res
-
-            
+ 
+             
 def find_product_name(html):
     print("Finding product name")
     try:
@@ -142,7 +142,7 @@ def find_product_name(html):
     except Exception as e:
         static.print_exception("Exception while trying to get product name")
         return None
-            
+             
 def find_brand(html):
     print("Finding brand")
     try:
@@ -150,7 +150,7 @@ def find_brand(html):
     except Exception as e:
         static.print_exception("Exception while trying to get product brand ")
         return None
-            
+             
 def find_bullets(html):
     print("Finding feature bullets")
     bullets_id = "feature-bullets"
@@ -173,7 +173,7 @@ def find_bullets(html):
     except Exception as e:
         static.print_exception("Exception while trying to parse feature bullets ")
         return None
-
+ 
 def find_description(html):
     print("Checking for product description")
     prod__iframe = [framescript.getText() for framescript in html.find_all("script") if re.search(r"var iframeContent",framescript.getText())]
@@ -198,7 +198,7 @@ def find_description(html):
                 return None
         else:
             return None
-    
+     
 def find_price(html, asin):
     print("Finding item price")
     price_div = None
@@ -225,7 +225,7 @@ def find_price(html, asin):
         except Exception as e:
             static.print_exception("Exception when parsing price listing for product %s"% asin)
             return None
-            
+             
 #     try:
 #         span = price_div.find("span", id=tag_id)
 #         if span:
@@ -237,8 +237,8 @@ def find_price(html, asin):
 #     except Exception as 
 #         static.p    oforolprint_exception("Exception when trying to parse price ")
 #         return None   
-
-
+ 
+ 
 def lookup_price_listing(asin):
     print("Will look up price listing for this product")
     price_listing_html = static.open_url(AMAZON_PRODUCT_LIST_URL, asin, USE_CACHE)
@@ -246,14 +246,14 @@ def lookup_price_listing(asin):
     if main_div:
         prime_offers = [o for o in main_div.find_all("div", class_= "olpOffer") if o.find("span", class_= "supersaver") and o.find(class_="olpConditionColumn") and o.find(class_="olpConditionColumn").getText().strip().lower() == "new"]    
         if prime_offers:
-            obj = re.search(r"\d+\.*\d*", prime_offers.replace("\n", ""))
+            obj = re.search(r"\d+\.*\d*", prime_offers[0].find("div", class_="olpPriceColumn").getText().replace("\n", ""))
             if obj:
                 return float(obj.group().strip())
             else:
                 raise Exception("could not parse price")
     else:
         raise Exception("div#olpOfferList missing")
-
+ 
 def parse_url_for_images(html):
     #data = None
     #with open("test1.txt","r", encoding="UTF-8") as f:
@@ -286,14 +286,14 @@ def parse_url_for_images(html):
         obj = re.search(r"(.*)\:(http.*)", item)
         if obj != None:
             #print("For type " + obj.group(1) + " URL is " + obj.group(2))
-   
+    
             try:
                 images[obj.group(1)] += [obj.group(2)]
             except KeyError:
                 images[obj.group(1)] = [obj.group(2)]
     print("Done")
     return images
-        
+         
 def main():
     global USE_CACHE
     global AUTO_OPEN_EDITOR
@@ -318,9 +318,9 @@ def main():
     print("Starting with CACHE %s and AUTO_OPEN %s and USE_DYNAMIC_TITLE %s" % ( USE_CACHE, AUTO_OPEN_EDITOR, USE_DYNAMIC_TITLE))
     #test_threading()
     run()
-    
+     
 if __name__ == '__main__':
     main()
-    
+     
 
         
