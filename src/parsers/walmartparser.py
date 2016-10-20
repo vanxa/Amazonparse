@@ -17,7 +17,7 @@ def process_product(product):
     global info_struct
     print("Processing " + product)
     try:
-        html = static.open_url(WALMART_URL_ROOT, product, USE_CACHE)
+        html = static.save_product_page(WALMART_URL_ROOT, product, USE_CACHE)
         
         if html != None:
             print("Getting product information")

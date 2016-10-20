@@ -1,10 +1,10 @@
-all: clean init azparser walmartparser move-dist 
+all:  clean init aparser wparser move-dist 
 
-azparser:
+aparser: 
 	pyinstaller -F -n azparser_win32 src\parsers\azparser.py
 	echo "Done"
 
-walmartparser:
+wparser: 
 	pyinstaller -F -n walmartparser_win32 src\parsers\walmartparser.py
 	echo "Done"
 

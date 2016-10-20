@@ -8,6 +8,8 @@ import itertools
 import fileinput
 from urllib import request
 from PIL import Image
+import colorama
+from colorama import Fore, Back, Style
 
 
 STEP_TITLE = 0
@@ -22,43 +24,84 @@ STEP_UPC = 7
 INFO_TXT = "info.txt"
 TEMP_TXT = "tmp.txt"
 
+colorama.init()
+
 def print_exception(msg = "Exception"):
     (trace_type, trace_val, stacktrace) = sys.exc_info()
-    print(msg)
-    print("-"*50)
+    error(msg)
+    error("-"*50)
     traceback.print_exception(trace_type,trace_val, stacktrace,limit=2, file=sys.stdout)
-    print("-"*50)  
+    error("-"*50)  
     
-    
-def open_url(url_root, product_id, use_cache=None):
+
+def save_product_page(url_root, product_id, use_cache=None):
     url = url_root + product_id
-    print("Creating storage directory for product " + product_id)
+    save_to = product_id + "/" + product_id + ".html"
+    info("Creating storage directory for product " + product_id)
     if not os.path.isdir(product_id):
         os.mkdir(product_id)
     else:
-        print("Directory already exists in " + os.getcwd())  
+        info("Directory already exists in " + os.getcwd())  
         refresh_directory(product_id)  
     if use_cache:
-        if os.path.isfile(product_id + "/" + product_id + ".html"):
-            print("Caching is on and found local copy of " + url)
-            return bs(open(product_id + "/" + product_id+".html","r",encoding="UTF-8").read(), "html.parser")
-    kwargs = {'retries' : 1}
-    print("Opening URL " + url)
-    headers = construct_headers()
-    conn = urllib3.connection_from_url(url, timeout=10.0, maxsize=10, block=True, headers=headers)
-    html = conn.urlopen("GET",url)
+        if os.path.isfile(save_to):
+            info("Caching is on and found local copy of " + url)
+            return bs(open(save_to,"r",encoding="UTF-8").read(), "html.parser")
+    info("Opening URL " + url)
+    html = _open(url)
     if html.status == 200:
-        print("OK")
+        success("OK")
         data = html.data.decode("UTF-8")
         if use_cache:
-            print("Saving local copy of " + url)
-            with open(product_id + "/" + product_id+".html", "w", encoding="UTF-8") as f:
+            info("Saving local copy of " + url)
+            with open(save_to, "w", encoding="UTF-8") as f:
                 f.write(data)
         return bs(data, "html.parser")
     else:
-        print("Could not find URL")
+        error("Could not find URL")
         return None
-    #return conn.urlopen("GET",url).data.decode("UTF-8")
+    
+# def open_url(url_root, product_id, use_cache=None):
+#     url = url_root + product_id
+#     save_to = product_id + "/" + product_id + ".html"
+#     print("Creating storage directory for product " + product_id)
+#     if not os.path.isdir(product_id):
+#         os.mkdir(product_id)
+#     else:
+#         print("Directory already exists in " + os.getcwd())  
+#         refresh_directory(product_id)  
+#     if use_cache:
+#         if os.path.isfile(save_to):
+#             print("Caching is on and found local copy of " + url)
+#             return bs(open(save_to,"r",encoding="UTF-8").read(), "html.parser")
+#     print("Opening URL " + url)
+#     headers = construct_headers()
+#     conn = urllib3.connection_from_url(url, timeout=10.0, maxsize=10, block=True, headers=headers)
+#     html = conn.urlopen("GET",url)
+#     if html.status == 200:
+#         print("OK")
+#         data = html.data.decode("UTF-8")
+#         if use_cache:
+#             print("Saving local copy of " + url)
+#             with open(save_to, "w", encoding="UTF-8") as f:
+#                 f.write(data)
+#         return bs(data, "html.parser")
+#     else:
+#         print("Could not find URL")
+#         return None
+
+def open_aux_page(url):  
+    html = _open(url)
+    if html.status == 200:
+        data = html.data.decode("UTF-8")
+        return bs(data, "html.parser")
+    return None
+  
+def _open(url):
+    print("Opening URL " + url)
+    headers = construct_headers()
+    conn = urllib3.connection_from_url(url, timeout=10.0, maxsize=10, block=True, headers=headers)
+    return conn.urlopen("GET",url)
   
   
 def refresh_directory(product_id):
@@ -487,3 +530,25 @@ class switch(object):
             return True
         else:
             return False
+
+def warn(msg):
+    print(Fore.YELLOW + msg + Style.RESET_ALL)
+
+def error(msg):
+    print(Fore.RED + msg + Style.RESET_ALL)
+    
+def success(msg):
+    print(Fore.GREEN + msg + Style.RESET_ALL)
+        
+def info(msg):
+    print(msg)
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[34m'
+    OKGREEN = '\033[32m'
+    WARNING = '\033[33m'
+    FAIL = '\033[31m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'

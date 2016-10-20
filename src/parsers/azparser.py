@@ -20,14 +20,14 @@ info_struct = {}
 
 def process_asin(asin):
     global info_struct
-    print("Processing Amazon product " + asin)
+    static.info("Processing Amazon product " + asin)
     try:
-        html = static.open_url(AMAZON_PRODUCT_URL, asin, USE_CACHE)
+        html = static.save_product_page(AMAZON_PRODUCT_URL, asin, USE_CACHE)
         if html != None:
-            print("Getting product information")
+            static.info("Getting product information")
             done = parse_url_for_info(html,asin)
             if not done:
-                print("There was an exception raised. Exiting")
+                static.error("There was an exception raised. Exiting")
                 return False
              
             if AUTO_OPEN_EDITOR:
@@ -35,13 +35,13 @@ def process_asin(asin):
             else:
                 input("The info file has been created in %s . Press any key to continue with image download, once you're done editing the data" % asin+"/"+ static.TEMP_TXT)
              
-            print("Getting images from HTML")
+            static.info("Getting images from HTML")
             images = parse_url_for_images(html)
             if images == None:
-                print("Something went wrong for asin " + asin)
+                static.error("Something went wrong for asin " + asin)
                 return False
              
-            print("Parsing keyword data from file")
+            static.info("Parsing keyword data from file")
             keywords,keywords_nomixed = static.parse_keywords(asin+"/"+ static.TEMP_TXT)
             if keywords == None or keywords_nomixed == None:
                 raise Exception("No keywords provided")
@@ -51,19 +51,19 @@ def process_asin(asin):
             static.modify_html_template(asin, info_struct, keywords_nomixed["LongTailKeyword"])
             return True
         else:
-            print("Skipping processing")
+            static.warn("Skipping processing")
             return True
     except Exception as e:
         static.print_exception("Exception while processing asin "+ asin)
         return False
  
 def run():
-    print("Starting AZParser.")
+    static.info("Starting AZParser.")
     asin_list = static.parse_product_file(ASIN_LIST_FILENAME)
     for asin in asin_list:
-        process_asin(asin)
+        process_asin(asin.strip())
     input("Parser has finished")
-    print("Goodbye!")
+    static.success("Goodbye!")
          
 ############################################# PRODUCT DETAILS ##################################################
  
@@ -88,14 +88,14 @@ def parse_url_for_info(html, asin = "."):
       
          
 def find_details(html):
-    print("Finding product details")
+    static.info("Finding product details")
     res = []
     try:
         detail_html = html.find(id="prodDetails")
         if detail_html == None:
             detail_html = html.find(id="detail-bullets")
             if detail_html == None:
-                print("No details found")
+                static.warn("No details found")
                 return None
             for li in detail_html.ul.find_all("li"):
                 if li.script or li.a or li.style:
@@ -119,12 +119,12 @@ def find_details(html):
     return res
          
 def find_tech_details(html):
-    print("Finding product technical details")
+    static.info("Finding product technical details")
     res = [] 
     try:
         detail_html = html.find(id="technicalSpecifications_feature_div")
         if detail_html == None:
-            print("No details found")
+            static.warn("No details found")
             return None
         for table in detail_html.find_all("table"):
             for row in table.find_all("tr"):
@@ -136,7 +136,7 @@ def find_tech_details(html):
  
              
 def find_product_name(html):
-    print("Finding product name")
+    static.info("Finding product name")
     try:
         return html.find(id="productTitle").getText().strip()
     except Exception as e:
@@ -144,20 +144,33 @@ def find_product_name(html):
         return None
              
 def find_brand(html):
-    print("Finding brand")
+    static.info("Finding brand")
     try:
-        return html.find(id="brand").getText().strip()
+        brand = html.find(id="brand")
+        brand_txt = brand.getText().strip()
+        if brand_txt:
+            return brand_txt
+        else:
+            static.warn("Cannot find brand name")
+            if brand.name == "a":
+                static.info("Will extract brand name from brand page")
+                href = AMAZON_URL_ROOT+brand.get("href").replace("/","",1)
+                brand_html = static.open_aux_page(href)
+                meta = brand_html.find("meta", {"name": "keywords"})
+                if meta: 
+                    return meta.get("content")
     except Exception as e:
         static.print_exception("Exception while trying to get product brand ")
+        
         return None
              
 def find_bullets(html):
-    print("Finding feature bullets")
+    static.info("Finding feature bullets")
     bullets_id = "feature-bullets"
     if html.find(id=bullets_id) == None:
         bullets_id = bullets_id+"-btf"
         if html.find(id=bullets_id)  == None:
-            print("No bullets were found")
+            static.warn("No bullets were found")
             return None
     try:
         bullets = [bullet.getText().strip() for bullet in html.find(id=bullets_id).find_all("li") if (
@@ -175,15 +188,15 @@ def find_bullets(html):
         return None
  
 def find_description(html):
-    print("Checking for product description")
+    static.info("Checking for product description")
     prod__iframe = [framescript.getText() for framescript in html.find_all("script") if re.search(r"var iframeContent",framescript.getText())]
     product_html = None
     if len(prod__iframe) == 0:
-        print("Product Description iFrame was not found!")
-        print("Looking for div id='productDescription'")
+        static.warn("Product Description iFrame was not found!")
+        static.info("Looking for div id='productDescription'")
         descr = html.find(id="productDescription")
         if descr:
-            print("Found it")
+            static.success("Found it")
             p = descr.p
             return p.getText().strip()
         return None
@@ -200,7 +213,7 @@ def find_description(html):
             return None
      
 def find_price(html, asin):
-    print("Finding item price")
+    static.info("Finding item price")
     price_div = None
     for tag in ["priceblock_ourprice","priceblock_dealprice", "snsPrice"]:
         price_div = html.find(id=tag)
@@ -217,11 +230,15 @@ def find_price(html, asin):
                 static.print_exception("Exception when trying to parse price ")
                 return None   
     if not price_div:
-        print("Could not find price div")
+        static.warn("Could not find price div")
         # try to search for the price offering list and get first the PRIME new offer's price 
         try:
             price = lookup_price_listing(asin)
-            return round(price + price*0.17,2)
+            if price == None:
+                static.warn("No price for this product was found. Maybe it's out of stock?")
+                return 0.0
+            else:
+                return round(price + price*0.17,2)
         except Exception as e:
             static.print_exception("Exception when parsing price listing for product %s"% asin)
             return None
@@ -240,8 +257,8 @@ def find_price(html, asin):
  
  
 def lookup_price_listing(asin):
-    print("Will look up price listing for this product")
-    price_listing_html = static.open_url(AMAZON_PRODUCT_LIST_URL, asin, USE_CACHE)
+    static.info("Will look up price listing for this product")
+    price_listing_html = static.open_aux_page(AMAZON_PRODUCT_LIST_URL+asin)
     main_div = price_listing_html.find("div", id="olpOfferList")
     if main_div:
         prime_offers = [o for o in main_div.find_all("div", class_= "olpOffer") if o.find("span", class_= "supersaver") and o.find(class_="olpConditionColumn") and o.find(class_="olpConditionColumn").getText().strip().lower() == "new"]    
@@ -258,28 +275,28 @@ def parse_url_for_images(html):
     #data = None
     #with open("test1.txt","r", encoding="UTF-8") as f:
     #    data = f.read().replace("\n","")
-    print("Searching for Javascript segment that has image urls")  
+    static.info("Searching for Javascript segment that has image urls")  
     obj = None
     for script in html.find_all("script"):
         obj = re.search(r"P.when\(\'A\'\).register\(\"ImageBlockATF.*?colorImages.*?initial[\'\"]*?.*?(\[\{.*?\]\}).*?colorToAsin",script.getText().replace("\n",""))
         if obj != None:
             break
     if obj == None:
-        print("Something went wrong. No such segment exists")
+        static.error("Something went wrong. No such segment exists")
         return
     data = obj.group()
     obj = re.search(r"(\[\{.*\]\})",data)
     if obj == None:
-        print("Something went wrong. No such segment exists")
+        static.error("Something went wrong. No such segment exists")
         return 
-    print("Found segment")
+    static.success("Found segment")
     i = re.sub(r"[\[\]\{\}]", "", obj.group(1))
-    print("Splitting")
+    static.info("Splitting")
     lst  = [re.sub(r"[\'\"]","", item) for item in i.split("\",\"")]
     #if len(lst) == 0:
     #    print("something went wrong")
     images = {}
-    print("Gathering images by type")
+    static.info("Gathering images by type")
     for item in lst:
         item = item.replace("\"","").replace("'","")
         #print(item)
@@ -291,7 +308,7 @@ def parse_url_for_images(html):
                 images[obj.group(1)] += [obj.group(2)]
             except KeyError:
                 images[obj.group(1)] = [obj.group(2)]
-    print("Done")
+    static.success("Done")
     return images
          
 def main():
@@ -308,14 +325,14 @@ def main():
     dyn_title = options.dyn_title
     if do_cache:
         USE_CACHE = True
-        print("CACHE flag is set")
+        static.info("CACHE flag is set")
     if auto_edit:
         AUTO_OPEN_EDITOR = True
-        print("AUTO_OPEN flag is set")
+        static.info("AUTO_OPEN flag is set")
     if dyn_title:
         USE_DYNAMIC_TITLE = True
-        print("USE_DYNAMIC_TITLE flag is set")
-    print("Starting with CACHE %s and AUTO_OPEN %s and USE_DYNAMIC_TITLE %s" % ( USE_CACHE, AUTO_OPEN_EDITOR, USE_DYNAMIC_TITLE))
+        static.info("USE_DYNAMIC_TITLE flag is set")
+    static.info("Starting with CACHE %s and AUTO_OPEN %s and USE_DYNAMIC_TITLE %s" % ( USE_CACHE, AUTO_OPEN_EDITOR, USE_DYNAMIC_TITLE))
     #test_threading()
     run()
      
