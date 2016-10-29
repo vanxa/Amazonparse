@@ -214,34 +214,45 @@ def find_description(html):
      
 def find_price(html, asin):
     static.info("Finding item price")
-    price_div = None
-    for tag in ["priceblock_ourprice","priceblock_dealprice", "snsPrice"]:
-        price_div = html.find(id=tag)
-        if price_div:
-            try:
-                if tag == "snsPrice":
-                    span = [ span for span in price_div.find_all("span") if span.has_attr("class") and "a-color-price" in span["class"] and "snsPricePerUnit" not in span["class"]]
-                    price = float(span[0].getText().strip().replace("\n","").replace("$",""))
-                    return round(price + price*0.17,2)
-                else:             
-                    price = float(price_div.getText().strip().replace("\n","").replace("$",""))
-                    return round(price + price*0.17,2)
-            except Exception as e:
-                static.print_exception("Exception when trying to parse price ")
-                return None   
-    if not price_div:
-        static.warn("Could not find price div")
-        # try to search for the price offering list and get first the PRIME new offer's price 
-        try:
-            price = lookup_price_listing(asin)
-            if price == None:
-                static.warn("No price for this product was found. Maybe it's out of stock?")
-                return 0.0
-            else:
-                return round(price + price*0.17,2)
-        except Exception as e:
-            static.print_exception("Exception when parsing price listing for product %s"% asin)
-            return None
+    try:
+        
+        price = lookup_price_listing(asin)
+        if price == None:
+            static.warn("No price for this product was found. Maybe it's out of stock?")
+            return 0.0
+        else:
+            return round(price + price*0.17,2)
+    except Exception as e:
+        static.print_exception("Could not parse price listing")
+            
+#     price_div = None
+#     for tag in ["priceblock_ourprice","priceblock_dealprice", "snsPrice"]:
+#         price_div = html.find(id=tag)
+#         if price_div:
+#             try:
+#                 if tag == "snsPrice":
+#                     span = [ span for span in price_div.find_all("span") if span.has_attr("class") and "a-color-price" in span["class"] and "snsPricePerUnit" not in span["class"]]
+#                     price = float(span[0].getText().strip().replace("\n","").replace("$",""))
+#                     return round(price + price*0.17,2)
+#                 else:             
+#                     price = float(price_div.getText().strip().replace("\n","").replace("$",""))
+#                     return round(price + price*0.17,2)
+#             except Exception as e:
+#                 static.print_exception("Exception when trying to parse price ")
+#                 return None   
+#     if not price_div:
+#         static.warn("Could not find price div")
+#         # try to search for the price offering list and get first the PRIME new offer's price 
+#         try:
+#             price = lookup_price_listing(asin)
+#             if price == None:
+#                 static.warn("No price for this product was found. Maybe it's out of stock?")
+#                 return 0.0
+#             else:
+#                 return round(price + price*0.17,2)
+#         except Exception as e:
+#             static.print_exception("Exception when parsing price listing for product %s"% asin)
+#             return None
              
 #     try:
 #         span = price_div.find("span", id=tag_id)

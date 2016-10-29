@@ -184,7 +184,7 @@ def parse_keywords(loc):
                 line = line.strip()
                 obj = re.search(r"longtailkeyword\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
-                    keyword = translate_quotes(obj.group(1))
+                    keyword = translate(obj.group(1))
                     print("Found it. Keyword is %s" % keyword )
                     if keyword == "":
                         raise Exception("No LongtailKeyword provided")
@@ -196,7 +196,7 @@ def parse_keywords(loc):
                 obj = re.search(r"suggestedkeyword(\d*)\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
                     index = obj.group(1)
-                    keyword = translate_quotes(obj.group(2))
+                    keyword = translate(obj.group(2))
                     if keyword == "":
                         #raise Exception("No SuggestedKeyword provided")
                         continue
@@ -227,6 +227,7 @@ def update_and_copy_info(product_id, keywords = None, dyn_title = False):
     details = []
     tech = []
     price = 0.0
+    create_policy = False
     upc = ""   
     tmp_path = product_id+"/"+TEMP_TXT
     info_path = product_id+"/"+INFO_TXT
@@ -241,6 +242,9 @@ def update_and_copy_info(product_id, keywords = None, dyn_title = False):
 #                     continue
                 for case in switch(line2.replace(" ","").replace(":","").lower()):                  
                     if case(""):
+                        if step == STEP_DESCR and create_policy:
+                            info_f.write(create_static_description(keywords["LongTailKeyword"]) + "\n")
+                            create_policy= False
                         pass
                     elif case("title"):
                         step = STEP_TITLE
@@ -272,9 +276,10 @@ def update_and_copy_info(product_id, keywords = None, dyn_title = False):
                                 brand = line2
                                 step = -1
                             elif inner_case(STEP_DESCR):
-                                descr = line2
-                                if keywords != None and "LongTailKeyword" in keywords.keys():
-                                    line += create_static_description(keywords["LongTailKeyword"]) + "\n"
+                                descr += line2 + "\n"
+                                if keywords != None and "LongTailKeyword" in keywords.keys() and not create_policy:
+                                    #descr += create_static_description(keywords["LongTailKeyword"] + "\n") # Add this line to template as well
+                                    create_policy = True
                             elif inner_case(STEP_BULLETS):
                                 bullets.append(line2)
                             elif inner_case(STEP_DETAILS):
@@ -335,12 +340,10 @@ def create_dynamic_title(keywords):
         return "NO TITLE"
     
     
-def translate_quotes(string_):
-    translation_tab = {
-        "\"" : "_", 
-        "\'" : "_",
-        "`"  : "_"
-    }
+def translate(string_):
+    intab="'/ \"\'\\"
+    outtab="______"
+    translation_tab = str.maketrans(intab, outtab) 
     return string_.translate(translation_tab)
 
 def open_editor(doclocation):

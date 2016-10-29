@@ -58,7 +58,7 @@ def run():
     print("Starting Walmart Parser.")
     product_list = static.parse_product_file(PRODUCT_LIST_FILENAME)
     for product in product_list:
-        process_product(product)
+        process_product(product.strip())
     input("Parser has finished")
     print("Goodbye!")
         
@@ -147,14 +147,14 @@ def find_bullets(html):
     print("Finding feature bullets")
     try:
         ellipsis = html.find("div", "about-item-complete").find("section","product-about").find(class_="js-ellipsis")
-        
         bullets = [bullet.getText().strip() for bullet in ellipsis.find("ul").find_all("li")]
         return bullets
     except Exception as e:
-        static.print_exception("Exception while trying to parse feature bullets ")
+#         static.print_exception("Exception while trying to parse feature bullets ")
+        static.warn("No feature bullets were found")
         return None
 
-def find_description(html):
+def find_description(html): 
     print("Checking for product description")
     try:
         ellipsis = html.find("div", "about-item-complete").find("section","product-about").find(class_="js-ellipsis")
@@ -162,7 +162,15 @@ def find_description(html):
         descr = ""
         for p in ps:
             if not p.has_attr("class") or "product-description-disclaimer" not in p['class']:
-                descr += p.getText().strip()+"\n"
+                if p.getText() != "":
+                    try:
+                        descr += p.children.__next__().strip()+"\n"
+                    except Exception:
+                        pass
+                #else:
+                # Get only first <p> tag
+                 #   descr += p.getText().strip()+"\n"
+                #break
         return descr
     except Exception as e:
         static.print_exception("Exception when trying to parse product description ")
