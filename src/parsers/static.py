@@ -184,18 +184,20 @@ def parse_keywords(loc):
                 line = line.strip()
                 obj = re.search(r"longtailkeyword\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
+                    keyword_original = obj.group(1)
                     keyword = translate(obj.group(1))
                     print("Found it. Keyword is %s" % keyword )
                     if keyword == "":
                         raise Exception("No LongtailKeyword provided")
                     keywords["LongTailKeyword"] = keyword
-                    keywords_nomixed["LongTailKeyword"] = keyword
+                    keywords_nomixed["LongTailKeyword"] = keyword_original
                     found_all = True
                 if found_all:
                     break
                 obj = re.search(r"suggestedkeyword(\d*)\s*\=\s*(.*)", line, re.IGNORECASE)
                 if obj:
                     index = obj.group(1)
+                    keyword_original = obj.group(2)
                     keyword = translate(obj.group(2))
                     if keyword == "":
                         #raise Exception("No SuggestedKeyword provided")
@@ -205,7 +207,7 @@ def parse_keywords(loc):
                         keywords["SuggestedKeyword"] += [keyword]
                     except KeyError:
                         keywords["SuggestedKeyword"] = [keyword]
-                    keywords_nomixed["SuggestedKeyword"+str(index)] = keyword
+                    keywords_nomixed["SuggestedKeyword"+str(index)] = keyword_original
             print("Done")
             if len(keywords.keys()) == 0:
                 print("No keywords were found in file. Did you forget to add keywords?")
@@ -342,7 +344,7 @@ def create_dynamic_title(keywords):
     
 def translate(string_):
     intab="'/ \"\'\\"
-    outtab="______"
+    outtab="------"
     translation_tab = str.maketrans(intab, outtab) 
     return string_.translate(translation_tab)
 
